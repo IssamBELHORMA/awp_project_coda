@@ -1,0 +1,7 @@
+[theme]
+base = "light"
+primaryColor = "#0072B2"
+baseFontSize = 16
+
+[server]
+headless = true

@@ -8,7 +8,20 @@ BRUT = RACINE / "Data" / "raw"
 SORTIE = RACINE / "Data" / "processed" / "joueurs.parquet"
 SORTIE.parent.mkdir(parents=True, exist_ok=True)
 
-OBJETS_SUPPORT = [3860, 3862, 3863, 3864, 3865, 3866, 3867, 3869, 3870, 3871, 3876, 3877]
+OBJETS_SUPPORT = [
+    3860,
+    3862,
+    3863,
+    3864,
+    3865,
+    3866,
+    3867,
+    3869,
+    3870,
+    3871,
+    3876,
+    3877,
+]
 REGIONS = ["EUW1", "NA1", "KR"]
 MIN_PARTIES_PATCH = 1000
 COLS_OBJETS = [f"item{i}" for i in range(1, 7)]
@@ -19,11 +32,23 @@ def lire(nom: str, **kw) -> pd.DataFrame:
 
 
 # 1. Lecture : seulement les colonnes utiles
-stats = lire("MatchStatsTbl", usecols=[
-    "SummonerMatchFk", "Lane", "Win", "EnemyChampionFk",
-    "kills", "deaths", "assists", "MinionsKilled", "TotalGold",
-    "DmgDealt", "visionScore", *COLS_OBJETS,
-])
+stats = lire(
+    "MatchStatsTbl",
+    usecols=[
+        "SummonerMatchFk",
+        "Lane",
+        "Win",
+        "EnemyChampionFk",
+        "kills",
+        "deaths",
+        "assists",
+        "MinionsKilled",
+        "TotalGold",
+        "DmgDealt",
+        "visionScore",
+        *COLS_OBJETS,
+    ],
+)
 liens = lire("SummonerMatchTbl", usecols=["SummonerMatchId", "MatchFk", "ChampionFk"])
 matchs = lire("MatchTbl")
 rangs = lire("RankTbl")
@@ -42,34 +67,38 @@ print(f"-> matchs : {len(df)} lignes")
 df = df.merge(rangs, left_on="RankFk", right_on="RankId", how="left")
 
 # 3. Filtres sur les parties
-df = df[(df["QueueType"] == "CLASSIC")     # Faille de l'invocateur uniquement
-        & (df["RankFk"] != 0)              # parties classées uniquement (0 = Unranked)
-        & (df["ChampionFk"] != 0)          # retire "No Champion"
-        & (df["GameDuration"] >= 300)]     # retire les parties de moins de 5 min
+df = df[
+    (df["QueueType"] == "CLASSIC")  # Faille de l'invocateur uniquement
+    & (df["RankFk"] != 0)  # parties classées uniquement (0 = Unranked)
+    & (df["ChampionFk"] != 0)  # retire "No Champion"
+    & (df["GameDuration"] >= 300)
+]  # retire les parties de moins de 5 min
 print(f"après filtres parties : {len(df)} lignes")
 
 # 4. Colonnes calculées
-propre = pd.DataFrame({
-    "match_id": df["MatchId"],
-    "region": df["MatchId"].str.split("_").str[0],
-    "patch": df["Patch"].str.split(".").str[:2].str.join("."),
-    "rang_id": df["RankFk"],
-    "rang": df["RankName"],
-    "duree_min": (df["GameDuration"] / 60).round(1),
-    "poste": df["Lane"],
-    "champion": df["ChampionFk"].map(noms),
-    "adversaire": df["EnemyChampionFk"].map(noms),
-    "victoire": df["Win"],
-    "kills": df["kills"],
-    "deaths": df["deaths"],
-    "assists": df["assists"],
-    "kda": ((df["kills"] + df["assists"]) / df["deaths"].clip(lower=1)).round(2),
-    "cs": df["MinionsKilled"],
-    "or_total": df["TotalGold"],
-    "degats": df["DmgDealt"],
-    "vision": df["visionScore"],
-    "objet_support": df[COLS_OBJETS].isin(OBJETS_SUPPORT).any(axis=1),
-})
+propre = pd.DataFrame(
+    {
+        "match_id": df["MatchId"],
+        "region": df["MatchId"].str.split("_").str[0],
+        "patch": df["Patch"].str.split(".").str[:2].str.join("."),
+        "rang_id": df["RankFk"],
+        "rang": df["RankName"],
+        "duree_min": (df["GameDuration"] / 60).round(1),
+        "poste": df["Lane"],
+        "champion": df["ChampionFk"].map(noms),
+        "adversaire": df["EnemyChampionFk"].map(noms),
+        "victoire": df["Win"],
+        "kills": df["kills"],
+        "deaths": df["deaths"],
+        "assists": df["assists"],
+        "kda": ((df["kills"] + df["assists"]) / df["deaths"].clip(lower=1)).round(2),
+        "cs": df["MinionsKilled"],
+        "or_total": df["TotalGold"],
+        "degats": df["DmgDealt"],
+        "vision": df["visionScore"],
+        "objet_support": df[COLS_OBJETS].isin(OBJETS_SUPPORT).any(axis=1),
+    }
+)
 
 # 5. Postes : retirer NONE, séparer BOTTOM en ADC / SUPPORT par l'objet de support
 propre = propre[propre["poste"] != "NONE"].copy()
@@ -98,20 +127,34 @@ print(f"Lignes : {len(propre)} | parties distinctes : {propre['match_id'].nuniqu
 
 print("\nPostes :\n", propre["poste"].value_counts().to_string())
 cs_min = propre["cs"] / propre["duree_min"]
-print("\ncs/min médian par poste :\n",
-      cs_min.groupby(propre["poste"], observed=True).median().round(1).to_string())
-print("\nSUPPORT avec plus de 5 cs/min (suspects) :",
-      int(((propre["poste"] == "SUPPORT") & (cs_min > 5)).sum()))
-print("ADC avec moins de 3 cs/min (suspects) :",
-      int(((propre["poste"] == "ADC") & (cs_min < 3)).sum()))
+print(
+    "\ncs/min médian par poste :\n",
+    cs_min.groupby(propre["poste"], observed=True).median().round(1).to_string(),
+)
+print(
+    "\nSUPPORT avec plus de 5 cs/min (suspects) :",
+    int(((propre["poste"] == "SUPPORT") & (cs_min > 5)).sum()),
+)
+print(
+    "ADC avec moins de 3 cs/min (suspects) :",
+    int(((propre["poste"] == "ADC") & (cs_min < 3)).sum()),
+)
 
 print("\nRangs :\n", propre["rang"].value_counts().to_string())
 print("\nRégions :\n", propre["region"].value_counts().to_string())
-print("\nPatchs gardés (parties distinctes) :\n",
-      propre.groupby("patch", observed=True)["match_id"].nunique().to_string())
+print(
+    "\nPatchs gardés (parties distinctes) :\n",
+    propre.groupby("patch", observed=True)["match_id"].nunique().to_string(),
+)
 
-print("\nChampions sans nom :", propre["champion"].isna().sum(),
-      "| adversaires sans nom :", propre["adversaire"].isna().sum())
+print(
+    "\nChampions sans nom :",
+    propre["champion"].isna().sum(),
+    "| adversaires sans nom :",
+    propre["adversaire"].isna().sum(),
+)
 print("Taux de victoire global :", round(propre["victoire"].mean(), 3))
-print("Taux de victoire par poste :\n",
-      propre.groupby("poste", observed=True)["victoire"].mean().round(3).to_string())
+print(
+    "Taux de victoire par poste :\n",
+    propre.groupby("poste", observed=True)["victoire"].mean().round(3).to_string(),
+)
