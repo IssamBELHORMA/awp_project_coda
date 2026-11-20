@@ -3,12 +3,16 @@
 Lancer : uv run streamlit run app.py --server.address 127.0.0.1
 """
 
+import os
+
+import httpx
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 import data
+import modele
 
 # Okabe-Ito (sans le jaune, trop peu contrasté sur fond blanc), une couleur par poste
 COULEURS = {
@@ -104,6 +108,16 @@ def top_par_poste(vue, n_min):
 @st.cache_data
 def fiabilite(vue):
     return data.fiabilite(vue, n_plancher=10)
+
+
+@st.cache_resource
+def charger_modele():
+    return modele.charger_modele()
+
+
+@st.cache_data
+def charger_metriques():
+    return modele.charger_metriques()
 
 
 st.set_page_config(page_title="LoL Helper", page_icon="🎯", layout="wide")
@@ -635,6 +649,134 @@ with onglet_parties:
             "Durée (min)": st.column_config.NumberColumn(format="%.1f"),
         },
     )
+
+# ---------- Couche ML : « Et si ? » ----------
+st.subheader("Et si ? Les chances de victoire avant la partie")
+tous_champions = sorted(df["champion"].astype(str).unique())
+with st.form("form_et_si"):
+    f1, f2 = st.columns(2)
+    mon_champion = f1.selectbox(
+        "Mon champion",
+        tous_champions,
+        index=tous_champions.index(champion),
+        key="ml_champion",
+    )
+    # Par défaut : l'adversaire le plus fréquent dans la vue
+    adversaire_frequent = str(vue["adversaire"].value_counts().index[0])
+    adversaire = f2.selectbox(
+        "L'adversaire en face",
+        tous_champions,
+        index=tous_champions.index(adversaire_frequent),
+        key="ml_adversaire",
+    )
+    f3, f4 = st.columns(2)
+    poste_ml = f3.selectbox(
+        "Poste",
+        data.POSTES,
+        index=data.POSTES.index(poste_vedette),
+        key="ml_poste",
+    )
+    rang_ml = f4.selectbox(
+        "Rang",
+        data.RANGS,
+        index=data.RANGS.index(rangs_choisis[0]),
+        key="ml_rang",
+    )
+    estimer = st.form_submit_button("Estimer")
+
+metriques = charger_metriques()
+if estimer:
+    proba = modele.predire(
+        charger_modele(), mon_champion, adversaire, poste_ml, rang_ml
+    )
+    st.metric(
+        "Chances de victoire",
+        pct(proba),
+        delta=f"{mon_champion} contre {adversaire}, {poste_ml}, {rang_ml}",
+        delta_color="off",
+        delta_arrow="off",
+        border=True,
+    )
+st.caption(
+    f"Régression logistique, validation croisée à 5 plis : AUC "
+    f"{str(metriques['auc']).replace('.', ',')} (référence "
+    f"{str(metriques['auc_reference']).replace('.', ',')}), exactitude "
+    f"{pct(metriques['exactitude'])} (référence "
+    f"{pct(metriques['exactitude_reference'])}), sur {nombre(metriques['lignes'])} "
+    "lignes. Référence : le taux de victoire du champion à ce poste et à ce rang. "
+    "Le modèle n'utilise que ce qui est connu avant la partie (champion, "
+    "adversaire, poste, rang) : il ne tient pas compte du niveau du joueur, d'où "
+    "une AUC proche de 0,5."
+)
+
+# ---------- Assistant IA (API FastAPI séparée) ----------
+st.subheader("Assistant : croiser vos parties OP.GG avec nos données")
+
+
+def url_api() -> str:
+    """Adresse de l'API : secret Streamlit, variable d'environnement ou local."""
+    try:
+        return st.secrets["API_URL"].rstrip("/")
+    except (KeyError, FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
+        return os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
+
+
+st.caption(
+    "Posez une question en français, par exemple « Je suis Gold mid, quel main "
+    "choisir ? » ou « Analyse le joueur Nom#TAG en EUW ». L'assistant (gpt-oss-120b "
+    "via Groq) interroge nos données et OP.GG par MCP. Texte généré par une IA : "
+    "vérifiez les chiffres dans les graphiques ci-dessus."
+)
+if "conversation" not in st.session_state:
+    st.session_state["conversation"] = []
+
+with st.container(border=True):
+    for message in st.session_state["conversation"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["contenu"])
+            if message.get("outils"):
+                st.caption("Outils utilisés : " + ", ".join(message["outils"]))
+    question = st.chat_input("Votre question", key="chat_question")
+
+if question:
+    historique = list(st.session_state["conversation"])
+    st.session_state["conversation"].append({"role": "user", "contenu": question})
+    try:
+        with st.spinner("L'assistant consulte nos données et OP.GG (jusqu'à 2 min)…"):
+            reponse = httpx.post(
+                f"{url_api()}/assistant",
+                json={
+                    "question": question,
+                    "historique": [
+                        {"role": m["role"], "contenu": m["contenu"]} for m in historique
+                    ],
+                },
+                timeout=240,
+            )
+        if reponse.status_code == 200:
+            corps = reponse.json()
+            st.session_state["conversation"].append(
+                {
+                    "role": "assistant",
+                    "contenu": corps["reponse"],
+                    "outils": sorted(set(corps["outils"])),
+                }
+            )
+        else:
+            detail = reponse.json().get("detail", reponse.text)
+            st.session_state["conversation"].append(
+                {"role": "assistant", "contenu": f"⚠️ L'assistant a échoué : {detail}"}
+            )
+    except httpx.HTTPError:
+        st.session_state["conversation"].append(
+            {
+                "role": "assistant",
+                "contenu": "⚠️ L'API de l'assistant ne répond pas. Elle est peut-être "
+                "en veille (hébergement gratuit) : réessayez dans une minute. Le reste "
+                "de la page fonctionne sans elle.",
+            }
+        )
+    st.rerun()
 
 # ---------- Méthode et limites ----------
 with st.expander("Méthode et limites"):

@@ -1,0 +1,18 @@
+{
+  "modele": "Régression logistique (one-hot : champion, adversaire, poste, rang)",
+  "validation": "validation croisée stratifiée à 5 plis",
+  "auc": 0.5183,
+  "auc_ecart_type": 0.0006,
+  "exactitude": 0.5117,
+  "auc_reference": 0.5118,
+  "exactitude_reference": 0.5092,
+  "reference": "taux de victoire du champion à ce poste et à ce rang (plis d'entraînement, lissé)",
+  "lignes": 130090,
+  "variables": [
+    "champion",
+    "adversaire",
+    "poste",
+    "rang"
+  ],
+  "date": "2026-11-20"
+}

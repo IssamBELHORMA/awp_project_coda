@@ -131,3 +131,74 @@ def test_effectifs_rangs_somme_a_100(df):
     eff = data.effectifs_rangs(df)
     assert eff["part"].sum() == pytest.approx(1)
     assert eff["rang"].tolist() == [r for r in data.RANGS if r in set(eff["rang"])]
+
+
+def test_formulaire_et_si_affiche_une_probabilite():
+    at = lancer()
+    at.button(key="FormSubmitter:form_et_si-Estimer").click().run()
+    assert not at.exception
+    chances = [m for m in at.metric if m.label == "Chances de victoire"]
+    assert len(chances) == 1
+    valeur = float(chances[0].value.replace("\u00a0%", "").replace(",", "."))
+    assert 0 < valeur < 100
+
+
+def test_modele_renvoie_une_probabilite():
+    import modele
+
+    p = modele.predire(modele.charger_modele(), "Ahri", "Zed", "MIDDLE", "Gold")
+    assert 0 < p < 1
+    assert modele.charger_metriques()["auc"] > 0.5
+
+
+def test_assistant_sans_api_affiche_un_message(monkeypatch):
+    """Si l'API ne répond pas, la page reste utilisable et le dit."""
+    monkeypatch.setenv("API_URL", "http://127.0.0.1:9")
+    at = lancer()
+    at.chat_input(key="chat_question").set_value("Quel main en Gold mid ?").run()
+    assert not at.exception
+    assert any("ne répond pas" in m.value for m in at.markdown)
+
+
+def test_api_routes_donnees():
+    from fastapi.testclient import TestClient
+
+    import api
+
+    client = TestClient(api.app)
+    assert client.get("/sante").json()["statut"] == "ok"
+    meilleurs = client.get("/meilleurs", params={"rang": "Master", "poste": "MIDDLE"})
+    assert meilleurs.status_code == 200
+    assert all(c["parties"] >= 50 for c in meilleurs.json()["meilleurs"])
+    prediction = client.post(
+        "/predire",
+        json={
+            "champion": "Ahri",
+            "adversaire": "Zed",
+            "poste": "MIDDLE",
+            "rang": "Gold",
+        },
+    )
+    assert 0 < prediction.json()["probabilite_victoire"] < 1
+    assert client.get("/champion/ChampionInexistant").status_code == 404
+
+
+def test_composition_un_champion_par_poste(df):
+    vue = data.filtrer(df, rangs=["Master"])
+    compo = data.composition_ideale(vue, n_min=50)
+    retenus = compo[compo["place"] == 1]
+    assert retenus["poste"].tolist() == data.POSTES
+    assert (compo["parties"] >= 50).all()
+    # Dans chaque poste, la place 1 a la meilleure borne basse
+    for _, groupe in compo.groupby("poste"):
+        assert groupe["ic_bas"].is_monotonic_decreasing
+
+
+def test_bans_excluent_notre_composition(df):
+    vue = data.filtrer(df, rangs=["Master"])
+    compo = data.composition_ideale(vue, n_min=50)
+    nos_champions = compo.loc[compo["place"] == 1, "champion"].tolist()
+    bans = data.bans_conseilles(vue, n_min=50, exclure=nos_champions)
+    assert len(bans) == 5
+    assert not set(bans["champion"]) & set(nos_champions)
+    assert bans["ic_bas"].is_monotonic_decreasing

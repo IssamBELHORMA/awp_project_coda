@@ -1,0 +1,15 @@
+# Déploiement de l'API FastAPI sur Render (offre gratuite) : New > Blueprint > ce dépôt
+services:
+  - type: web
+    name: lol-helper-api
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-dev uvicorn api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /sante
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: GROQ_API_KEY
+        sync: false # à saisir dans le tableau de bord Render, jamais dans le dépôt

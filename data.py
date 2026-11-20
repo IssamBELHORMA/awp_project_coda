@@ -244,3 +244,41 @@ def effectifs_rangs(vue_tous_rangs: pd.DataFrame) -> pd.DataFrame:
     stats["part"] = stats["parties"] / stats["parties"].sum()
     stats["ordre"] = stats["rang"].map(RANGS.index)
     return stats.sort_values("ordre").drop(columns="ordre").reset_index(drop=True)
+
+
+def composition_ideale(
+    vue_postes: pd.DataFrame, n_min: int, alternatives: int = 3
+) -> pd.DataFrame:
+    """La composition la plus sûre : pour chaque poste, les champions classés par
+    la borne basse de leur intervalle de confiance (un taux élevé sur peu de
+    parties ne passe pas devant un taux un peu moins élevé mais solide).
+
+    `vue_postes` : la vue filtrée par rang, région et patch, tous postes confondus.
+    Colonne `place` : 1 = le champion retenu, 2 et plus = les alternatives.
+    """
+    stats = stats_champions(vue_postes, n_min, par=["poste"])
+    stats = stats.sort_values(["poste", "ic_bas"], ascending=[True, False])
+    stats["place"] = stats.groupby("poste").cumcount() + 1
+    stats = stats[stats["place"] <= alternatives]
+    stats["ordre"] = stats["poste"].map(POSTES.index)
+    return (
+        stats.sort_values(["ordre", "place"])
+        .drop(columns="ordre")
+        .reset_index(drop=True)
+    )
+
+
+def bans_conseilles(
+    vue_postes: pd.DataFrame,
+    n_min: int,
+    top: int = 5,
+    exclure: list[str] | None = None,
+) -> pd.DataFrame:
+    """Les bans les plus utiles : les champions les plus fiablement forts à ce
+    rang, tous postes confondus (classés par la borne basse de l'intervalle),
+    hors champions de notre propre composition (`exclure`).
+    """
+    stats = stats_champions(vue_postes, n_min)
+    if exclure:
+        stats = stats[~stats["champion"].isin(exclure)]
+    return stats.sort_values("ic_bas", ascending=False).head(top).reset_index(drop=True)
