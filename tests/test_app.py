@@ -171,7 +171,8 @@ def test_assistant_sans_api_affiche_un_message(monkeypatch):
     at = lancer()
     at.chat_input(key="chat_question").set_value("Quel main en Gold mid ?").run()
     assert not at.exception
-    assert any("ne répond pas" in m.value for m in at.markdown)
+    textes = [m.value for m in at.sidebar.markdown] + [m.value for m in at.markdown]
+    assert any("ne répond pas" in v for v in textes)
 
 
 def test_api_routes_donnees():

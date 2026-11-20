@@ -106,3 +106,11 @@ Serveur MCP « nos données » seul, pour un autre client MCP (Claude Desktop…
 | `assistant_lol.md` | le prompt système : rôle, règles, vocabulaire LoL et data science |
 | `render.yaml` | le déploiement de l'API sur Render |
 | `tests/test_app.py` | les tests : filtres, petits rangs, zoom, ML, API, assistant sans API, données |
+
+## Mentions
+
+LoL Helper n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot
+Games ni de quiconque officiellement impliqué dans la production ou la gestion des
+propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des
+marques commerciales ou des marques déposées de Riot Games, Inc. Images des
+champions et de la carte : Data Dragon (Riot Games), projet étudiant non commercial.

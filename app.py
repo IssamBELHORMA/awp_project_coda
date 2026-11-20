@@ -32,6 +32,7 @@ TEXTE = "#F0E6D2"  # texte crème (14,8:1 sur le fond)
 TEXTE_DOUX = "#A09B8C"  # texte secondaire (6,6:1)
 LIGNE = "#B8B2A6"  # lignes de référence (8,7:1)
 OR = "#C8AA6E"  # accent (8,3:1)
+PANNEAU = "#111C2E"  # fond des encadrés
 BANDE = "rgba(240, 230, 210, 0.12)"  # zone du hasard
 # Texte dans les barres : bleu nuit sur les couleurs pleines (>= 4,7:1), crème
 # sur les barres atténuées
@@ -145,14 +146,29 @@ def charger_metriques():
     return modele.charger_metriques()
 
 
-st.set_page_config(page_title="LoL Helper", page_icon="🎯", layout="wide")
-# Titres de section en or (8,3:1 sur le fond) ; les constats (h4) restent crème
+st.set_page_config(
+    page_title="LoL Helper",
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+# Titres de section en or (8,3:1 sur le fond). Les constats (h4) sont encadrés
+# d'un liseré or pour se lire d'un coup d'œil. La barre de filtres reste collée
+# en haut quand on fait défiler la page.
 st.markdown(
     f"""<style>
 h1, h2, h3 {{ color: {OR} !important; }}
 h2, h3 {{ border-bottom: 1px solid {OR}55; padding-bottom: 0.2rem; }}
+h4 {{ border-left: 4px solid {OR}; background: {PANNEAU}; padding: 0.5rem 0.8rem
+     !important; border-radius: 0 6px 6px 0; line-height: 1.4 !important; }}
+[data-testid="stCaptionContainer"] {{ color: #D9D0BE !important;
+     font-size: 0.95rem !important; }}
 /* Étiquettes des filtres : bleu nuit sur or (8,3:1) au lieu de blanc (2,2:1) */
 [data-tag], [data-tag] span, [data-tag] button {{ color: {FOND} !important; }}
+.st-key-barre_filtres {{ position: sticky; top: 3.2rem; z-index: 990;
+     background: {FOND}; border-bottom: 1px solid {OR}88; padding: 0.4rem 0; }}
+.st-key-barre_filtres a {{ color: {OR} !important; text-decoration: none;
+     margin-right: 0.9rem; white-space: nowrap; font-size: 0.95rem; }}
 </style>""",
     unsafe_allow_html=True,
 )
@@ -160,32 +176,47 @@ h2, h3 {{ border-bottom: 1px solid {OR}55; padding-bottom: 0.2rem; }}
 df = charger()
 tous_patchs = data.liste_patchs(df)
 
-# ---------- Barre latérale : les filtres ----------
-with st.sidebar:
-    st.header("Filtres")
-    rangs = st.multiselect("Rang", data.RANGS, default=["Gold"], key="f_rang")
-    postes = st.multiselect("Poste", data.POSTES, default=["MIDDLE"], key="f_poste")
-    regions = st.multiselect(
-        "Région", data.REGIONS, default=data.REGIONS, key="f_region"
-    )
-    patchs = st.multiselect("Patch", tous_patchs, default=tous_patchs, key="f_patch")
-    n_min = st.slider(
-        "Minimum de parties par champion",
-        min_value=10,
-        max_value=200,
-        value=50,
-        step=10,
-        key="f_n_min",
-        help="Les champions joués moins souvent sont masqués : leur taux de "
-        "victoire n'est pas fiable.",
-    )
-
 # ---------- Titre : la question du coach ----------
-st.title("Quel champion conseiller à ce rang et à ce poste ?")
+st.title("Quel champion conseiller à ce rang et à ce poste\u00a0?")
 st.caption(
     "Pour un coach de joueurs classés : parties classées réelles, patchs "
-    f"{tous_patchs[0]} à {tous_patchs[-1]}, EUW / NA / KR."
+    f"{tous_patchs[0]} à {tous_patchs[-1]}, EUW / NA / KR. L'assistant IA est "
+    "dans la barre latérale."
 )
+
+# ---------- Barre de filtres, collée en haut pendant le défilement ----------
+etat = st.session_state
+resume = (
+    f"⚙️ Filtres : {', '.join(etat.get('f_rang', ['Gold'])) or 'aucun rang'} · "
+    f"{', '.join(etat.get('f_poste', ['MIDDLE'])) or 'aucun poste'} · "
+    f"min {etat.get('f_n_min', 50)} parties"
+)
+with st.container(key="barre_filtres"):
+    col_filtres, col_liens = st.columns([2, 3], vertical_alignment="center")
+    with col_filtres.popover(resume, use_container_width=True):
+        rangs = st.multiselect("Rang", data.RANGS, default=["Gold"], key="f_rang")
+        postes = st.multiselect("Poste", data.POSTES, default=["MIDDLE"], key="f_poste")
+        regions = st.multiselect(
+            "Région", data.REGIONS, default=data.REGIONS, key="f_region"
+        )
+        patchs = st.multiselect(
+            "Patch", tous_patchs, default=tous_patchs, key="f_patch"
+        )
+        n_min = st.slider(
+            "Minimum de parties par champion",
+            min_value=10,
+            max_value=200,
+            value=50,
+            step=10,
+            key="f_n_min",
+            help="Les champions joués moins souvent sont masqués : leur taux de "
+            "victoire n'est pas fiable.",
+        )
+    col_liens.markdown(
+        "[Meilleurs](#meilleurs) [Composition](#composition) "
+        "[Tableau tactique](#tableau) [Fiabilité](#fiabilite) "
+        "[Zoom](#zoom) [Et si ?](#et-si) [Méthode](#methode)"
+    )
 
 # Trois vues : sans filtre de poste (graphique principal), sans filtre de rang
 # (graphiques par rang), et la vue complète (tout le reste)
@@ -249,7 +280,7 @@ else:
     )
 
 # ---------- Q1. Le graphique principal ----------
-st.subheader("Le meilleur champion de chaque poste")
+st.subheader("Le meilleur champion de chaque poste", anchor="meilleurs")
 mode = st.radio(
     "Affichage",
     ["Par patch", "Tous patchs confondus"],
@@ -429,7 +460,7 @@ else:
         )
 
 # ---------- Composition et bans conseillés (avec la carte) ----------
-st.subheader("Composition et bans conseillés")
+st.subheader("Composition et bans conseillés", anchor="composition")
 compo = composition(vue_postes, n_min)
 if compo.empty:
     st.info(
@@ -465,6 +496,9 @@ else:
             st.info(f"Aucun autre champion n'atteint {n_min} parties.")
         for i, ban in enumerate(a_bannir.itertuples(), start=1):
             with st.container(border=True):
+                icone = carte.url_icone(ban.champion)
+                if icone:
+                    st.image(icone, width=56)
                 st.markdown(
                     f"⛔ **Ban {i} · {ban.champion}**  \n"
                     f"{pct(ban.taux_victoire)} sur {int(ban.parties)} parties "
@@ -502,8 +536,26 @@ else:
         "une équipe testée ensemble."
     )
 
+# ---------- Tableau tactique : une carte sur laquelle le coach dessine ----------
+st.subheader("Tableau tactique", anchor="tableau")
+st.markdown(
+    "#### Dessinez vos plans de jeu sur la carte : chemins de jungle, rotations, "
+    "objectifs"
+)
+st.caption(
+    "Outils en haut à droite de la carte : tracé libre, ligne, cercle, rectangle, "
+    "gomme (cliquez un dessin puis la gomme), et l'appareil photo pour télécharger "
+    "la carte annotée en PNG. Les icônes sont la composition conseillée ci-dessus. "
+    "Les dessins ne sont pas enregistrés."
+)
+st.plotly_chart(
+    carte.figure_tableau(None if compo.empty else compo),
+    config=carte.CONFIG_DESSIN,
+    key="tableau_tactique",
+)
+
 # ---------- Q2. Ces taux de victoire sont-ils fiables ? ----------
-st.subheader("Ces taux de victoire sont-ils fiables ?")
+st.subheader("Ces taux de victoire sont-ils fiables ?", anchor="fiabilite")
 fiab, moyenne = fiabilite(vue)
 if fiab.empty:
     st.info(f"Aucun champion n'a 10 parties en {rangs_txt} {postes_txt}.")
@@ -612,7 +664,7 @@ else:
     )
 
 # ---------- Q3. Zoom sur un champion ----------
-st.subheader("Zoom sur un champion")
+st.subheader("Zoom sur un champion", anchor="zoom")
 options = data.champions_joues(vue)
 defaut = ind["meilleur_champion"] if ind["meilleur_champion"] in options else options[0]
 # Si les filtres changent et que le champion n'est plus dans la vue, on revient
@@ -761,7 +813,7 @@ with onglet_parties:
     )
 
 # ---------- Couche ML : « Et si ? » ----------
-st.subheader("Et si ? Les chances de victoire avant la partie")
+st.subheader("Et si ? Les chances de victoire avant la partie", anchor="et-si")
 tous_champions = sorted(df["champion"].astype(str).unique())
 with st.form("form_et_si"):
     f1, f2 = st.columns(2)
@@ -819,8 +871,7 @@ st.caption(
     "une AUC proche de 0,5."
 )
 
-# ---------- Assistant IA (API FastAPI séparée) ----------
-st.subheader("Assistant : croiser vos parties OP.GG avec nos données")
+# ---------- Assistant IA dans la barre latérale (API FastAPI séparée) ----------
 
 
 def url_api() -> str:
@@ -831,64 +882,74 @@ def url_api() -> str:
         return os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
-st.caption(
-    "Posez une question en français, par exemple « Je suis Gold mid, quel main "
-    "choisir ? » ou « Analyse le joueur Nom#TAG en EUW ». L'assistant (gpt-oss-120b "
-    "via Groq) interroge nos données et OP.GG par MCP. Texte généré par une IA : "
-    "vérifiez les chiffres dans les graphiques ci-dessus."
-)
+def demander(question: str, historique: list[dict]) -> dict:
+    """Envoie la question à l'API ; renvoie le message à afficher."""
+    try:
+        reponse = httpx.post(
+            f"{url_api()}/assistant",
+            json={
+                "question": question,
+                "historique": [
+                    {"role": m["role"], "contenu": m["contenu"]} for m in historique
+                ],
+            },
+            timeout=240,
+        )
+    except httpx.HTTPError:
+        return {
+            "role": "assistant",
+            "contenu": "⚠️ L'API de l'assistant ne répond pas. Elle est peut-être en "
+            "veille (hébergement gratuit) : réessayez dans une minute. Le reste de "
+            "la page fonctionne sans elle.",
+        }
+    if reponse.status_code == 200:
+        corps = reponse.json()
+        return {
+            "role": "assistant",
+            "contenu": corps["reponse"],
+            "outils": sorted(set(corps["outils"])),
+        }
+    detail = reponse.json().get("detail", reponse.text)
+    return {"role": "assistant", "contenu": f"⚠️ L'assistant a échoué : {detail}"}
+
+
 if "conversation" not in st.session_state:
     st.session_state["conversation"] = []
 
-with st.container(border=True):
+with st.sidebar:
+    st.header("🤖 Assistant")
+    st.caption(
+        "Croise vos parties OP.GG avec nos données. Exemples : « Je suis Gold mid, "
+        "quel main choisir ? », « Analyse le joueur Nom#TAG en EUW ». Modèle "
+        "gpt-oss-120b (Groq) + MCP. Texte généré par une IA : vérifiez les "
+        "chiffres dans les graphiques. Réponse en 30 s à 2 min."
+    )
     for message in st.session_state["conversation"]:
         with st.chat_message(message["role"]):
             st.markdown(message["contenu"])
             if message.get("outils"):
                 st.caption("Outils utilisés : " + ", ".join(message["outils"]))
     question = st.chat_input("Votre question", key="chat_question")
+    if question:
+        historique = list(st.session_state["conversation"])
+        st.session_state["conversation"].append({"role": "user", "contenu": question})
+        with st.spinner("L'assistant consulte nos données et OP.GG…"):
+            st.session_state["conversation"].append(demander(question, historique))
+        st.rerun()
+    if st.session_state["conversation"] and st.button(
+        "Effacer la conversation", key="chat_effacer"
+    ):
+        st.session_state["conversation"] = []
+        st.rerun()
 
-if question:
-    historique = list(st.session_state["conversation"])
-    st.session_state["conversation"].append({"role": "user", "contenu": question})
-    try:
-        with st.spinner("L'assistant consulte nos données et OP.GG (jusqu'à 2 min)…"):
-            reponse = httpx.post(
-                f"{url_api()}/assistant",
-                json={
-                    "question": question,
-                    "historique": [
-                        {"role": m["role"], "contenu": m["contenu"]} for m in historique
-                    ],
-                },
-                timeout=240,
-            )
-        if reponse.status_code == 200:
-            corps = reponse.json()
-            st.session_state["conversation"].append(
-                {
-                    "role": "assistant",
-                    "contenu": corps["reponse"],
-                    "outils": sorted(set(corps["outils"])),
-                }
-            )
-        else:
-            detail = reponse.json().get("detail", reponse.text)
-            st.session_state["conversation"].append(
-                {"role": "assistant", "contenu": f"⚠️ L'assistant a échoué : {detail}"}
-            )
-    except httpx.HTTPError:
-        st.session_state["conversation"].append(
-            {
-                "role": "assistant",
-                "contenu": "⚠️ L'API de l'assistant ne répond pas. Elle est peut-être "
-                "en veille (hébergement gratuit) : réessayez dans une minute. Le reste "
-                "de la page fonctionne sans elle.",
-            }
-        )
-    st.rerun()
-
-# ---------- Méthode et limites ----------
+st.subheader("Méthode, limites et mentions", anchor="methode")
+st.caption(
+    "LoL Helper n'est pas approuvé par Riot Games et ne reflète pas les opinions de "
+    "Riot Games ni de quiconque officiellement impliqué dans la production ou la "
+    "gestion des propriétés de Riot Games. Riot Games et toutes les propriétés "
+    "associées sont des marques commerciales ou des marques déposées de Riot "
+    "Games, Inc. Images : Data Dragon (Riot Games)."
+)
 with st.expander("Méthode et limites"):
     effectifs = data.effectifs_rangs(vue_rangs)
     if not effectifs.empty:
