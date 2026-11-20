@@ -1,7 +1,17 @@
+# Thème sombre inspiré de l'ambiance du client du jeu (bleu nuit, crème, or).
+# Contrastes vérifiés sur le fond #0A1428 : texte crème 14,8:1, or 8,3:1,
+# texte secondaire 6,6:1, bordures 3,4:1.
 [theme]
-base = "light"
-primaryColor = "#0072B2"
+base = "dark"
+primaryColor = "#C8AA6E"
+backgroundColor = "#0A1428"
+secondaryBackgroundColor = "#111C2E"
+textColor = "#F0E6D2"
+linkColor = "#C8AA6E"
+borderColor = "#5B6B85"
 baseFontSize = 16
+headingFont = "Marcellus:https://fonts.googleapis.com/css2?family=Marcellus&display=swap, serif"
+headingFontWeights = 400
 
 [server]
 headless = true

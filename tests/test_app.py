@@ -77,6 +77,20 @@ def test_le_champion_suit_les_filtres():
     assert choix.value in choix.options
 
 
+def test_section_composition_gold_et_challenger():
+    """La section composition et bans s'affiche en Gold et ne plante pas en
+    Challenger (où aucun champion n'atteint 50 parties à un poste)."""
+    at = lancer()
+    assert not at.exception
+    titres = [m.value for m in at.markdown]
+    assert any("la composition la plus sûre" in t for t in titres)
+    assert any("Ban 1" in t for t in titres)
+
+    at.multiselect(key="f_rang").set_value(["Challenger"]).run()
+    assert not at.exception
+    assert any("Composition" in s.value for s in at.subheader)
+
+
 # ---------- Tests de data.py ----------
 
 

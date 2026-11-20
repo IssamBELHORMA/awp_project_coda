@@ -11,20 +11,32 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import carte
 import data
 import modele
 
-# Okabe-Ito (sans le jaune, trop peu contrasté sur fond blanc), une couleur par poste
+# ---------- Couleurs (thème sombre, fond #0A1428) ----------
+# Okabe-Ito, une couleur par poste, ajusté au fond sombre (bleu, orange et rose
+# un peu assombris : même teinte, éclat maîtrisé). Vérifié : contraste >= 4,7:1
+# sur le fond, daltonisme : écart OKLab >= 11 entre voisins. Les barres portent
+# toujours le nom du champion et une légende : la couleur n'est jamais seule.
 COULEURS = {
     "TOP": "#D55E00",
     "JUNGLE": "#009E73",
-    "MIDDLE": "#0072B2",
-    "ADC": "#E69F00",
-    "SUPPORT": "#CC79A7",
+    "MIDDLE": "#3A9AD4",
+    "ADC": "#C28500",
+    "SUPPORT": "#C06A9A",
 }
-# Texte lisible sur chaque couleur (contraste >= 4,5:1)
-TEXTE_SUR = {"MIDDLE": "#FFFFFF"}
-BLEU, BLEU_PALE, VERMILLON, GRIS = "#0072B2", "#B3CDE3", "#D55E00", "#6E6E6E"
+FOND = "#0A1428"  # fond de page (bleu nuit)
+TEXTE = "#F0E6D2"  # texte crème (14,8:1 sur le fond)
+TEXTE_DOUX = "#A09B8C"  # texte secondaire (6,6:1)
+LIGNE = "#B8B2A6"  # lignes de référence (8,7:1)
+OR = "#C8AA6E"  # accent (8,3:1)
+BANDE = "rgba(240, 230, 210, 0.12)"  # zone du hasard
+# Texte dans les barres : bleu nuit sur les couleurs pleines (>= 4,7:1), crème
+# sur les barres atténuées
+TEXTE_BARRE, TEXTE_ATTENUE = FOND, TEXTE
+BLEU, ARDOISE, VERMILLON, GRIS = "#3A9AD4", "#7A8599", "#D55E00", TEXTE_DOUX
 CHOISI, AUTRE = "Rang choisi", "Autres rangs"
 NOMS_POSTES = {
     "TOP": "au top",
@@ -63,6 +75,9 @@ def styliser(fig, marge_haut: int = 50):
         legend_font_size=13,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
         margin={"t": marge_haut},
+        # Jamais de texte sous 12 px dans les barres, même si Plotly voudrait
+        # le rapetisser pour le faire tenir
+        uniformtext={"minsize": 12, "mode": "show"},
     )
     # Le thème Streamlit réduit les polices des axes : on les fixe
     fig.update_xaxes(tickfont_size=13, title_font_size=14)
@@ -77,11 +92,11 @@ def afficher(fig, constat: str, key: str):
 
 
 def barres_rangs(fig):
-    """Rangs choisis en bleu plein, autres en bleu pâle, contour sombre."""
+    """Rangs choisis en bleu, autres en ardoise, liseré du fond entre les barres."""
     for trace in fig.data:
-        choisi = trace.name == CHOISI
-        trace.marker.line = {"color": "#333333", "width": 1}
-        trace.textfont = {"color": "#FFFFFF" if choisi else "#000000", "size": 13}
+        trace.marker.line = {"color": FOND, "width": 2}
+        trace.textfont = {"color": TEXTE_BARRE, "size": 13}
+        trace.error_y.color = TEXTE
     return fig
 
 
@@ -110,6 +125,16 @@ def fiabilite(vue):
     return data.fiabilite(vue, n_plancher=10)
 
 
+@st.cache_data
+def composition(vue_postes, n_min):
+    return data.composition_ideale(vue_postes, n_min)
+
+
+@st.cache_data
+def bans(vue_postes, n_min, exclure):
+    return data.bans_conseilles(vue_postes, n_min, exclure=list(exclure))
+
+
 @st.cache_resource
 def charger_modele():
     return modele.charger_modele()
@@ -121,6 +146,16 @@ def charger_metriques():
 
 
 st.set_page_config(page_title="LoL Helper", page_icon="🎯", layout="wide")
+# Titres de section en or (8,3:1 sur le fond) ; les constats (h4) restent crème
+st.markdown(
+    f"""<style>
+h1, h2, h3 {{ color: {OR} !important; }}
+h2, h3 {{ border-bottom: 1px solid {OR}55; padding-bottom: 0.2rem; }}
+/* Étiquettes des filtres : bleu nuit sur or (8,3:1) au lieu de blanc (2,2:1) */
+[data-tag], [data-tag] span, [data-tag] button {{ color: {FOND} !important; }}
+</style>""",
+    unsafe_allow_html=True,
+)
 
 df = charger()
 tous_patchs = data.liste_patchs(df)
@@ -228,9 +263,9 @@ def mettre_en_valeur(fig):
     """Couleur pleine pour les postes choisis, atténuée pour les autres."""
     for trace in fig.data:
         choisi = trace.name in postes_choisis
-        trace.marker.opacity = 1.0 if choisi else 0.3
-        trace.marker.line = {"color": "#333333", "width": 1}
-        couleur = TEXTE_SUR.get(trace.name, "#000000") if choisi else "#000000"
+        trace.marker.opacity = 1.0 if choisi else 0.4
+        trace.marker.line = {"color": FOND, "width": 2}
+        couleur = TEXTE_BARRE if choisi else TEXTE_ATTENUE
         trace.textfont = {"color": couleur, "size": 13}
     fig.update_layout(legend_title_text="Poste")
     return styliser(fig)
@@ -309,7 +344,7 @@ if mode == "Par patch":
             hovertemplate="<b>%{customdata[0]}, patch %{x}</b><br>"
             "%{customdata[1]}<extra></extra>",
         )
-        fig.add_hline(y=50, line_dash="dash", line_color="#333333")
+        fig.add_hline(y=50, line_dash="dash", line_color=LIGNE)
         fig.update_yaxes(range=[0, max(70, meilleurs["taux_pct"].max() + 5)])
         # Garder tous les patchs choisis sur l'axe, même ceux sans barre
         fig.update_xaxes(
@@ -385,13 +420,87 @@ else:
         fig.update_yaxes(
             categoryorder="array", categoryarray=ordre["etiquette"].tolist()[::-1]
         )
-        fig.add_vline(x=50, line_dash="dash", line_color="#333333")
+        fig.add_vline(x=50, line_dash="dash", line_color=LIGNE)
         fig.update_xaxes(range=[0, max(70, top["taux_pct"].max() + 5)])
         afficher(mettre_en_valeur(fig), constat, "graph_principal")
         st.caption(
             "Ligne pointillée : 50 % de victoires. Chaque barre indique le nombre "
             "de parties (p.)."
         )
+
+# ---------- Composition et bans conseillés (avec la carte) ----------
+st.subheader("Composition et bans conseillés")
+compo = composition(vue_postes, n_min)
+if compo.empty:
+    st.info(
+        f"En {rangs_txt}, aucun champion n'atteint {n_min} parties à un poste : "
+        f"{conseil_vide}."
+    )
+else:
+    retenus = compo[compo["place"] == 1]
+    a_bannir = bans(vue_postes, n_min, tuple(retenus["champion"]))
+    noms = ", ".join(retenus["champion"])
+    constat = f"En {rangs_txt}, la composition la plus sûre : {noms}"
+    if not a_bannir.empty:
+        b = a_bannir.iloc[0]
+        constat += (
+            f" ; à bannir en priorité : {b['champion']} "
+            f"({pct(b['taux_victoire'])} sur {int(b['parties'])} parties)"
+        )
+    st.markdown(f"#### {constat}")
+    col_carte, col_bans = st.columns([3, 2], gap="large")
+    with col_carte:
+        fig = carte.figure(compo, COULEURS, pct, data.POSTES)
+        st.plotly_chart(fig, alt=constat, key="graph_carte", config=CONFIG)
+        manquants = [p for p in data.POSTES if p not in set(retenus["poste"])]
+        if manquants:
+            st.caption(
+                f"Sans champion ({', '.join(manquants)}) : aucun n'atteint {n_min} "
+                f"parties à ce poste ; {conseil_vide}."
+            )
+        st.caption("Survolez un repère pour voir les alternatives du poste.")
+    with col_bans:
+        st.markdown("##### ⛔ Bans conseillés")
+        if a_bannir.empty:
+            st.info(f"Aucun autre champion n'atteint {n_min} parties.")
+        for i, ban in enumerate(a_bannir.itertuples(), start=1):
+            with st.container(border=True):
+                st.markdown(
+                    f"⛔ **Ban {i} · {ban.champion}**  \n"
+                    f"{pct(ban.taux_victoire)} sur {int(ban.parties)} parties "
+                    f"(IC 95 % : {pct(ban.ic_bas)} à {pct(ban.ic_haut)})"
+                )
+    with st.expander("Voir la composition en tableau"):
+        tableau = compo.assign(
+            taux=compo["taux_victoire"].map(pct),
+            intervalle=[
+                f"{pct(a)} à {pct(b)}"
+                for a, b in zip(compo["ic_bas"], compo["ic_haut"])
+            ],
+            choix=np.where(compo["place"] == 1, "Retenu", "Alternative"),
+        )[["poste", "place", "choix", "champion", "taux", "parties", "intervalle"]]
+        st.dataframe(
+            tableau,
+            hide_index=True,
+            column_config={
+                "poste": "Poste",
+                "place": "Place",
+                "choix": "Rôle",
+                "champion": "Champion",
+                "taux": "Taux de victoire",
+                "parties": "Parties",
+                "intervalle": "Intervalle 95 %",
+            },
+        )
+    st.caption(
+        "Méthode : à chaque poste, les champions sont classés par la borne basse "
+        "de leur intervalle de confiance à 95 % : un taux élevé sur peu de parties "
+        "ne passe pas devant un taux un peu moins élevé mais solide. Bans : les "
+        "champions les plus fiablement forts à ce rang, hors de notre composition. "
+        "Les données ne mesurent pas les synergies entre alliés (environ 1 joueur "
+        "suivi par partie) : c'est le champion le plus sûr de chaque poste, pas "
+        "une équipe testée ensemble."
+    )
 
 # ---------- Q2. Ces taux de victoire sont-ils fiables ? ----------
 st.subheader("Ces taux de victoire sont-ils fiables ?")
@@ -431,7 +540,7 @@ else:
             x=np.concatenate([bande["parties"], bande["parties"][::-1]]),
             y=np.concatenate([bande["haut"], bande["bas"][::-1]]) * 100,
             fill="toself",
-            fillcolor="rgba(0, 0, 0, 0.08)",
+            fillcolor=BANDE,
             line={"width": 0},
             hoverinfo="skip",
             name="Zone du hasard (95 %)",
@@ -465,7 +574,7 @@ else:
                 },
                 text=[c if c in a_nommer else "" for c in part["champion"]],
                 textposition="top center",
-                textfont={"size": 13, "color": "#222222"},
+                textfont={"size": 13, "color": TEXTE},
                 customdata=np.stack(
                     [part["champion"], part["ic_bas"] * 100, part["ic_haut"] * 100],
                     axis=-1,
@@ -475,7 +584,7 @@ else:
                 "%{customdata[2]:.0f} %<extra></extra>",
             )
         )
-    fig.add_hline(y=moyenne * 100, line_dash="dash", line_color="#333333")
+    fig.add_hline(y=moyenne * 100, line_dash="dash", line_color=LIGNE)
     fig.add_vline(x=n_min, line_dash="dot", line_color=GRIS)
     # Sur un axe logarithmique, les annotations et la plage sont en log10
     fig.add_annotation(
@@ -485,7 +594,7 @@ else:
         text=f"minimum : {n_min}",
         showarrow=False,
         xanchor="left",
-        font={"size": 13, "color": "#444444"},
+        font={"size": 13, "color": TEXTE_DOUX},
     )
     fig.update_xaxes(
         type="log",
@@ -497,7 +606,7 @@ else:
     afficher(styliser(fig, marge_haut=70), constat, "graph_fiabilite")
     st.caption(
         "Chaque point est un champion (au moins 10 parties). Ligne pointillée : "
-        "taux de victoire moyen de la vue. La zone grise montre où tombe un "
+        "taux de victoire moyen de la vue. La zone claire montre où tombe un "
         "champion moyen par simple hasard : elle se resserre quand le nombre de "
         "parties augmente. Un champion au-dessus de la zone gagne vraiment plus."
     )
@@ -556,7 +665,7 @@ with onglet_rang:
             error_y_minus="err_bas",
             text="texte",
             category_orders={"rang": data.RANGS, "choix": [CHOISI, AUTRE]},
-            color_discrete_map={CHOISI: BLEU, AUTRE: BLEU_PALE},
+            color_discrete_map={CHOISI: BLEU, AUTRE: ARDOISE},
             custom_data=["parties", "ic_bas", "ic_haut"],
             labels={"rang": "Rang", "taux_pct": "Taux de victoire (%)", "choix": ""},
         )
@@ -566,7 +675,7 @@ with onglet_rang:
             hovertemplate="<b>%{x}</b><br>%{y:.1f} % sur %{customdata[0]} "
             "parties<extra></extra>",
         )
-        fig.add_hline(y=50, line_dash="dash", line_color="#333333")
+        fig.add_hline(y=50, line_dash="dash", line_color=LIGNE)
         fig.update_yaxes(range=[0, max(75, visibles["ic_haut"].max() * 100 + 5)])
         afficher(styliser(barres_rangs(fig)), constat, "graph_rang")
         caches = stats_r[stats_r["parties"] < MIN_DETAIL]["rang"].tolist()
@@ -620,12 +729,13 @@ with onglet_duree:
         fig.update_traces(
             textposition="inside",
             insidetextanchor="start",
-            textfont={"color": "#FFFFFF", "size": 13},
-            marker_line={"color": "#333333", "width": 1},
+            textfont={"color": TEXTE_BARRE, "size": 13},
+            marker_line={"color": FOND, "width": 2},
+            error_y_color=TEXTE,
             hovertemplate="<b>%{x}</b><br>%{y:.1f} % sur %{customdata[0]} "
             "parties<extra></extra>",
         )
-        fig.add_hline(y=50, line_dash="dash", line_color="#333333")
+        fig.add_hline(y=50, line_dash="dash", line_color=LIGNE)
         fig.update_yaxes(range=[0, max(75, visibles["ic_haut"].max() * 100 + 5)])
         afficher(styliser(fig), constat, "graph_duree")
         st.caption(
@@ -799,7 +909,7 @@ with st.expander("Méthode et limites"):
             color="choix",
             text="texte",
             category_orders={"rang": data.RANGS, "choix": [CHOISI, AUTRE]},
-            color_discrete_map={CHOISI: BLEU, AUTRE: BLEU_PALE},
+            color_discrete_map={CHOISI: BLEU, AUTRE: ARDOISE},
             labels={"rang": "Rang", "parties": "Parties", "choix": ""},
         )
         fig.update_traces(
@@ -807,8 +917,8 @@ with st.expander("Méthode et limites"):
             hovertemplate="<b>%{x}</b><br>%{y} parties<extra></extra>",
         )
         for trace in fig.data:
-            trace.marker.line = {"color": "#333333", "width": 1}
-            trace.textfont = {"color": "#000000", "size": 13}
+            trace.marker.line = {"color": FOND, "width": 2}
+            trace.textfont = {"color": TEXTE, "size": 13}
         fig.update_yaxes(range=[0, effectifs["parties"].max() * 1.15])
         afficher(styliser(fig), constat, "graph_effectifs")
         st.caption(
