@@ -96,11 +96,3 @@ uv run pytest tests -q && uv run ruff check .
 | `assistant.py`, `assistant_lol.md` | assistant IA et son prompt |
 | `render.yaml` | déploiement de l'API |
 | `tests/test_app.py` | tests |
-
-## Mentions
-
-LoL Helper n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot
-Games ni de quiconque officiellement impliqué dans la production ou la gestion des
-propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des
-marques commerciales ou des marques déposées de Riot Games, Inc. Images : Data Dragon
-(Riot Games). Projet étudiant non commercial.
