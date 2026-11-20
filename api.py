@@ -26,6 +26,30 @@ def charger_env() -> None:
 
 charger_env()
 
+
+def nettoyer_cle() -> None:
+    """Corrige les erreurs de collage de la clé Groq (espaces, guillemets, nom)."""
+    cle = os.environ.get("GROQ_API_KEY", "").strip().strip("\"'").strip()
+    if cle.startswith("GROQ_API_KEY="):
+        cle = cle.removeprefix("GROQ_API_KEY=").strip().strip("\"'")
+    if cle:
+        os.environ["GROQ_API_KEY"] = cle
+
+
+def format_cle() -> str:
+    """Diagnostic du format de la clé, sans jamais l'afficher."""
+    cle = os.environ.get("GROQ_API_KEY", "")
+    if not cle:
+        return "absente"
+    if not cle.startswith("gsk_"):
+        return "ne commence pas par gsk_"
+    if len(cle) != 56:
+        return f"longueur inattendue ({len(cle)} caractères au lieu de 56)"
+    return "ok"
+
+
+nettoyer_cle()
+
 import assistant
 
 app = FastAPI(
@@ -59,6 +83,7 @@ def sante() -> dict:
     return {
         "statut": "ok",
         "assistant_configure": bool(os.environ.get("GROQ_API_KEY")),
+        "format_cle": format_cle(),
         "modele_llm": assistant.nom_modele(),
     }
 
