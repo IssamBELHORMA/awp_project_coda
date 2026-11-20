@@ -9,7 +9,9 @@ Clé requise : GROQ_API_KEY (gratuite sur https://console.groq.com).
 
 import json
 import os
+import re
 from pathlib import Path
+from urllib.parse import unquote
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
@@ -71,8 +73,30 @@ def creer_agent() -> Agent:
     )
 
 
+# Lien de profil OP.GG : op.gg/(lol/)summoners/<région>/<Nom>-<TAG>
+LIEN_OPGG = re.compile(
+    r"op\.gg/(?:[a-z]{2}/)?(?:lol/)?summoners/([a-z]+)/([^\s?#/]+)", re.IGNORECASE
+)
+TAG_PAR_DEFAUT = {"euw": "EUW", "eune": "EUNE", "na": "NA1", "kr": "KR1"}
+
+
+def lire_lien_opgg(texte: str) -> str | None:
+    """Tire la région et le Riot ID d'un lien OP.GG (sans lire la page)."""
+    trouve = LIEN_OPGG.search(texte)
+    if not trouve:
+        return None
+    region, joueur = trouve.group(1).lower(), unquote(trouve.group(2))
+    nom, _, tag = joueur.rpartition("-")
+    if not nom:
+        nom, tag = joueur, TAG_PAR_DEFAUT.get(region, region.upper())
+    return f"Riot ID : {nom}#{tag}, région : {region} (tiré du lien OP.GG)"
+
+
 def formuler(question: str, historique: list[dict] | None) -> str:
     """Ajoute les derniers échanges à la question (contexte de conversation)."""
+    lien = lire_lien_opgg(question)
+    if lien:
+        question = f"{question}\n[{lien}]"
     if not historique:
         return question
     lignes = [
