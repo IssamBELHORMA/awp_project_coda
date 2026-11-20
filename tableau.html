@@ -1,0 +1,152 @@
+<!-- Bac à sable du coach : carte, champions déplaçables, crayon, pinceau magique,
+     Ctrl+Z. Injecté par app.py (VERSION et PIONS remplacés avant l'affichage). -->
+<style>
+  * { box-sizing: border-box; font-family: "Source Sans Pro", sans-serif; }
+  body { margin: 0; background: #0A1428; color: #F0E6D2; }
+  .barre { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  button, input, select { background: #111C2E; color: #F0E6D2; border: 1px solid #5B6B85;
+    border-radius: 6px; padding: 6px 10px; font-size: 15px; }
+  button { cursor: pointer; }
+  button.actif { background: #C8AA6E; color: #0A1428; border-color: #C8AA6E; font-weight: 600; }
+  input[type=color] { padding: 2px; width: 42px; height: 34px; }
+  #champ { width: 190px; }
+  canvas { width: 100%; max-width: 640px; aspect-ratio: 1; display: block; border: 1px solid #5B6B85;
+    border-radius: 6px; touch-action: none; cursor: crosshair; }
+  .aide { font-size: 14px; color: #D9D0BE; margin-top: 6px; }
+</style>
+<div class="barre">
+  <input id="champ" list="liste" placeholder="Chercher un champion…" aria-label="Champion à placer">
+  <datalist id="liste"></datalist>
+  <select id="camp" aria-label="Camp"><option value="bleu">Camp bleu</option><option value="rouge">Camp rouge</option></select>
+  <button id="ajouter">➕ Placer</button>
+</div>
+<div class="barre">
+  <button data-outil="deplacer" class="actif">✋ Déplacer</button>
+  <button data-outil="crayon">✏️ Crayon</button>
+  <button data-outil="magique">✨ Pinceau magique</button>
+  <input id="couleur" type="color" value="#C8AA6E" aria-label="Couleur">
+  <button id="annuler">↩️ Annuler (Ctrl+Z)</button>
+  <button id="vider">🗑️ Tout effacer</button>
+  <button id="png">📷 PNG</button>
+</div>
+<canvas id="c" width="640" height="640" tabindex="0" aria-label="Carte de la Faille de l'invocateur"></canvas>
+<div class="aide">Placez un champion puis glissez-le avec ✋ Déplacer · double-clic sur un champion pour le retirer ·
+  le pinceau magique s'efface en 3 secondes · Ctrl+Z annule la dernière action.</div>
+<script>
+const VERSION = "__VERSION__";
+const DD = "https://ddragon.leagueoflegends.com/cdn/";
+const c = document.getElementById("c"), ctx = c.getContext("2d");
+const T = 640, R = 26, FONDU = 3000;
+const carte = new Image(); carte.crossOrigin = "anonymous";
+carte.src = DD + "6.8.1/img/map/map11.png";
+const images = {};
+function image(id) {
+  if (!images[id]) { const i = new Image(); i.crossOrigin = "anonymous";
+    i.src = DD + VERSION + "/img/champion/" + id + ".png"; images[id] = i; }
+  return images[id];
+}
+let etat = { pions: __PIONS__, traits: [] };
+let magiques = [], historique = [], outil = "deplacer", trait = null, saisi = null;
+const copie = () => JSON.parse(JSON.stringify(etat));
+const memoriser = () => { historique.push(copie()); if (historique.length > 100) historique.shift(); };
+function annuler() { if (historique.length) etat = historique.pop(); }
+
+// Champions : la liste complète de Data Dragon (nom français -> id)
+const ids = {};
+fetch(DD + VERSION + "/data/fr_FR/champion.json").then(r => r.json()).then(d => {
+  const liste = document.getElementById("liste");
+  Object.values(d.data).sort((a, b) => a.name.localeCompare(b.name)).forEach(ch => {
+    ids[ch.name.toLowerCase()] = ch.id; ids[ch.id.toLowerCase()] = ch.id;
+    const o = document.createElement("option"); o.value = ch.name; liste.appendChild(o);
+  });
+});
+document.getElementById("ajouter").onclick = () => {
+  const id = ids[document.getElementById("champ").value.trim().toLowerCase()];
+  if (!id) { document.getElementById("champ").focus(); return; }
+  memoriser();
+  const camp = document.getElementById("camp").value;
+  etat.pions.push({ id, camp, x: camp === "bleu" ? 200 : 440, y: camp === "bleu" ? 440 : 200 });
+  document.getElementById("champ").value = "";
+};
+document.querySelectorAll("[data-outil]").forEach(b => b.onclick = () => {
+  outil = b.dataset.outil;
+  document.querySelectorAll("[data-outil]").forEach(x => x.classList.toggle("actif", x === b));
+  c.style.cursor = outil === "deplacer" ? "grab" : "crosshair";
+});
+document.getElementById("annuler").onclick = annuler;
+document.getElementById("vider").onclick = () => { memoriser(); etat.traits = []; etat.pions = []; magiques = []; };
+document.getElementById("png").onclick = () => {
+  try { const a = document.createElement("a"); a.download = "tableau_tactique.png";
+    a.href = c.toDataURL("image/png"); a.click(); }
+  catch (e) { alert("Export impossible dans ce navigateur : faites une capture d'écran."); }
+};
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); annuler(); }
+});
+
+function point(e) {
+  const r = c.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * T / r.width, y: (e.clientY - r.top) * T / r.height };
+}
+function pionSous(p) {
+  for (let i = etat.pions.length - 1; i >= 0; i--) {
+    const q = etat.pions[i]; if (Math.hypot(q.x - p.x, q.y - p.y) <= R) return i;
+  }
+  return -1;
+}
+c.addEventListener("pointerdown", e => {
+  c.setPointerCapture(e.pointerId); c.focus();
+  const p = point(e), couleur = document.getElementById("couleur").value;
+  if (outil === "deplacer") {
+    const i = pionSous(p);
+    if (i >= 0) { memoriser(); saisi = { i, dx: etat.pions[i].x - p.x, dy: etat.pions[i].y - p.y }; }
+  } else if (outil === "crayon") {
+    memoriser(); trait = { couleur, pts: [p] }; etat.traits.push(trait);
+  } else {
+    trait = { couleur, pts: [p], fin: null }; magiques.push(trait);
+  }
+});
+c.addEventListener("pointermove", e => {
+  const p = point(e);
+  if (saisi) { const q = etat.pions[saisi.i];
+    q.x = Math.min(T - R, Math.max(R, p.x + saisi.dx)); q.y = Math.min(T - R, Math.max(R, p.y + saisi.dy)); }
+  else if (trait) trait.pts.push(p);
+});
+const lacher = () => { if (trait && "fin" in trait) trait.fin = performance.now(); trait = null; saisi = null; };
+c.addEventListener("pointerup", lacher);
+c.addEventListener("pointercancel", lacher);
+c.addEventListener("dblclick", e => {
+  const i = pionSous(point(e)); if (i >= 0) { memoriser(); etat.pions.splice(i, 1); }
+});
+
+function tracer(t, alpha) {
+  if (t.pts.length < 1) return;
+  ctx.globalAlpha = alpha; ctx.strokeStyle = t.couleur; ctx.lineWidth = 5;
+  ctx.lineCap = ctx.lineJoin = "round"; ctx.beginPath();
+  ctx.moveTo(t.pts[0].x, t.pts[0].y); t.pts.forEach(p => ctx.lineTo(p.x, p.y));
+  if (t.pts.length === 1) ctx.lineTo(t.pts[0].x + 0.1, t.pts[0].y);
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+function dessiner() {
+  const now = performance.now();
+  ctx.fillStyle = "#0A1428"; ctx.fillRect(0, 0, T, T);
+  if (carte.complete && carte.naturalWidth) { ctx.globalAlpha = 0.85; ctx.drawImage(carte, 0, 0, T, T); ctx.globalAlpha = 1; }
+  etat.traits.forEach(t => tracer(t, 1));
+  magiques = magiques.filter(t => t.fin === null || now - t.fin < FONDU);
+  magiques.forEach(t => {
+    tracer(t, t.fin === null ? 1 : 1 - (now - t.fin) / FONDU);
+    if (t.fin === null) { ctx.shadowColor = t.couleur; }
+  });
+  etat.pions.forEach(q => {
+    const img = image(q.id);
+    ctx.save(); ctx.beginPath(); ctx.arc(q.x, q.y, R, 0, 2 * Math.PI); ctx.closePath(); ctx.clip();
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, q.x - R, q.y - R, 2 * R, 2 * R);
+    else { ctx.fillStyle = "#111C2E"; ctx.fill(); }
+    ctx.restore();
+    ctx.lineWidth = 4; ctx.strokeStyle = q.camp === "bleu" ? "#3A9AD4" : "#D55E00";
+    ctx.beginPath(); ctx.arc(q.x, q.y, R, 0, 2 * Math.PI); ctx.stroke();
+  });
+  requestAnimationFrame(dessiner);
+}
+dessiner();
+</script>

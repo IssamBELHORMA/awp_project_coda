@@ -3,13 +3,16 @@
 Lancer : uv run streamlit run app.py --server.address 127.0.0.1
 """
 
+import json
 import os
+from pathlib import Path
 
 import httpx
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 import carte
 import data
@@ -539,19 +542,37 @@ else:
 # ---------- Tableau tactique : une carte sur laquelle le coach dessine ----------
 st.subheader("Tableau tactique", anchor="tableau")
 st.markdown(
-    "#### Dessinez vos plans de jeu sur la carte : chemins de jungle, rotations, "
-    "objectifs"
+    "#### Le bac à sable du coach : placez n'importe quel champion, déplacez-le et "
+    "dessinez vos plans de jeu"
 )
 st.caption(
-    "Outils en haut à droite de la carte : tracé libre, ligne, cercle, rectangle, "
-    "gomme (cliquez un dessin puis la gomme), et l'appareil photo pour télécharger "
-    "la carte annotée en PNG. Les icônes sont la composition conseillée ci-dessus. "
-    "Les dessins ne sont pas enregistrés."
+    "Cherchez un champion (toute la liste du jeu), choisissez son camp et cliquez "
+    "« Placer ». ✋ Déplacer : glissez les portraits ; double-clic pour en retirer "
+    "un. ✏️ Crayon : trait permanent ; ✨ Pinceau magique : s'efface en 3 secondes. "
+    "Ctrl+Z annule la dernière action. Au départ : la composition conseillée."
 )
-st.plotly_chart(
-    carte.figure_tableau(None if compo.empty else compo),
-    config=carte.CONFIG_DESSIN,
-    key="tableau_tactique",
+# Positions de départ des postes sur la carte (pixels d'une carte de 640 px)
+DEPART = {
+    "TOP": (75, 110),
+    "JUNGLE": (190, 370),
+    "MIDDLE": (320, 270),
+    "ADC": (450, 540),
+    "SUPPORT": (565, 460),
+}
+pions = []
+if not compo.empty:
+    for ligne in compo[compo["place"] == 1].itertuples():
+        icone = carte.url_icone(ligne.champion)
+        if icone and ligne.poste in DEPART:
+            x, y = DEPART[ligne.poste]
+            identifiant = icone.rsplit("/", 1)[-1].removesuffix(".png")
+            pions.append({"id": identifiant, "camp": "bleu", "x": x, "y": y})
+gabarit = (Path(__file__).parent / "tableau.html").read_text(encoding="utf-8")
+components.html(
+    gabarit.replace("__VERSION__", carte.version_ddragon()).replace(
+        "__PIONS__", json.dumps(pions)
+    ),
+    height=830,
 )
 
 # ---------- Q2. Ces taux de victoire sont-ils fiables ? ----------
